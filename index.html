@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>세련된 웹 TV 플레이어</title>
+    <title>웹 TV 플레이어 (플레이리스트 포함)</title>
 
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 
@@ -12,42 +12,85 @@
         body {
             font-family: 'Pretendard', sans-serif;
             background-color: #121212;
-            color: #fff;
+            color: #e0e0e0;
             margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             height: 100vh;
             overflow: hidden;
         }
 
-        .container {
-            width: 90%;
-            max-width: 1200px;
+        /* 메인 레이아웃 (Flexbox 사용) */
+        .main-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 왼쪽: 비디오 플레이어 영역 */
+        .player-wrapper {
+            flex: 3; /* 3:1 비율로 왼쪽이 더 넓게 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+            padding: 1rem;
+        }
+
+        /* 오른쪽: 플레이리스트 영역 */
+        .playlist-wrapper {
+            flex: 1;
+            background-color: #1e1e1e;
+            overflow-y: auto; /* 목록이 길어지면 스크롤 생성 */
+            padding: 1rem;
+            border-left: 2px solid #333;
+        }
+
+        .playlist-title {
+            margin-top: 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #444;
+            font-size: 1.2rem;
+        }
+        
+        #playlist {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #playlist li {
+            padding: 1rem 0.5rem;
+            cursor: pointer;
+            border-bottom: 1px solid #2c2c2c;
+            transition: background-color 0.2s ease;
+        }
+
+        #playlist li:hover {
+            background-color: #333;
+        }
+        
+        /* 현재 재생 중인 항목 스타일 */
+        #playlist li.active {
+            background-color: #00bfff;
+            color: #000;
+            font-weight: bold;
         }
 
         /* Plyr 플레이어 커스텀 스타일 */
         :root {
-            --plyr-color-main: #00bfff; /* 포인트 색상 (DeepSkyBlue) */
-            --plyr-video-background: #000;
-        }
-
-        .plyr {
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-
-        /* 컨트롤 버튼 호버 시 약간 확대되는 효과 */
-        .plyr__control:hover {
-            transform: scale(1.1);
-            transition: transform 0.2s ease-in-out;
+            --plyr-color-main: #00bfff;
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <video id="player" playsinline controls></video>
+    <div class="main-container">
+        <div class="player-wrapper">
+            <video id="player" playsinline controls></video>
+        </div>
+        <div class="playlist-wrapper">
+            <h2 class="playlist-title">📺 채널 목록</h2>
+            <ul id="playlist"></ul>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
@@ -56,50 +99,34 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('player');
+            const playlistElement = document.getElementById('playlist');
             // 🚨 여기에 제공하신 M3U 주소를 입력하세요.
-            const source = 'https://s1f.oracle1126.duckdns.org/alive/api/m3u';
+            const m3uUrl = 'https://s1f.oracle1126.duckdns.org/alive/api/m3u';
 
-            const defaultOptions = {};
+            let hls = new Hls();
+            const player = new Plyr(video);
+            window.player = player;
+            window.hls = hls;
 
-            if (Hls.isSupported()) {
-                // HLS.js를 사용하여 스트리밍 처리
-                const hls = new Hls();
-                hls.loadSource(source);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-                    const availableQualities = hls.levels.map((l) => l.height);
-
-                    defaultOptions.quality = {
-                        default: availableQualities[0],
-                        options: availableQualities,
-                        // 품질 변경 시 HLS 스트림을 업데이트하는 로직
-                        forced: true,
-                        onChange: (e) => updateQuality(e),
-                    };
-                    // Plyr 플레이어 초기화
-                    const player = new Plyr(video, defaultOptions);
-                });
-                hls.attachMedia(video);
-                window.hls = hls;
-
-            } else {
-                // HLS.js를 지원하지 않는 브라우저 (예: Safari)
-                video.src = source;
-                const player = new Plyr(video, defaultOptions);
-            }
-
-            function updateQuality(newQuality) {
-                if (window.hls) {
-                    window.hls.levels.forEach((level, levelIndex) => {
-                        if (level.height === newQuality) {
-                            console.log("Found quality match with " + newQuality);
-                            window.hls.currentLevel = levelIndex;
+            // M3U 파일을 가져와 파싱하는 함수
+            async function fetchAndParsePlaylist() {
+                try {
+                    //  CORS 문제로 직접 fetch가 실패할 수 있습니다.
+                    // 이 경우 서버에서 Access-Control-Allow-Origin 헤더 설정이 필요합니다.
+                    const response = await fetch(m3uUrl);
+                    if (!response.ok) {
+                        throw new Error('네트워크 응답이 올바르지 않습니다.');
+                    }
+                    const data = await response.text();
+                    
+                    const lines = data.split('\n');
+                    const playlist = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].startsWith('#EXTINF:')) {
+                            const title = lines[i].split(',').slice(1).join(',').trim();
+                            const url = lines[i + 1].trim();
+                            if (title && url) {
+                                playlist.push({ title, url });
+                            }
                         }
-                    });
-                }
-            }
-        });
-    </script>
-
-</body>
-</html>
+                    }
