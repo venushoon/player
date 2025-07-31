@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>세련된 웹 TV 플레이어</title>
+
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+
+    <style>
+        /* 기본 페이지 스타일 */
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #121212;
+            color: #fff;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+        }
+
+        /* Plyr 플레이어 커스텀 스타일 */
+        :root {
+            --plyr-color-main: #00bfff; /* 포인트 색상 (DeepSkyBlue) */
+            --plyr-video-background: #000;
+        }
+
+        .plyr {
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 컨트롤 버튼 호버 시 약간 확대되는 효과 */
+        .plyr__control:hover {
+            transform: scale(1.1);
+            transition: transform 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video id="player" playsinline controls></video>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('player');
+            // 🚨 여기에 제공하신 M3U 주소를 입력하세요.
+            const source = 'https://s1f.oracle1126.duckdns.org/alive/api/m3u';
+
+            const defaultOptions = {};
+
+            if (Hls.isSupported()) {
+                // HLS.js를 사용하여 스트리밍 처리
+                const hls = new Hls();
+                hls.loadSource(source);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+                    const availableQualities = hls.levels.map((l) => l.height);
+
+                    defaultOptions.quality = {
+                        default: availableQualities[0],
+                        options: availableQualities,
+                        // 품질 변경 시 HLS 스트림을 업데이트하는 로직
+                        forced: true,
+                        onChange: (e) => updateQuality(e),
+                    };
+                    // Plyr 플레이어 초기화
+                    const player = new Plyr(video, defaultOptions);
+                });
+                hls.attachMedia(video);
+                window.hls = hls;
+
+            } else {
+                // HLS.js를 지원하지 않는 브라우저 (예: Safari)
+                video.src = source;
+                const player = new Plyr(video, defaultOptions);
+            }
+
+            function updateQuality(newQuality) {
+                if (window.hls) {
+                    window.hls.levels.forEach((level, levelIndex) => {
+                        if (level.height === newQuality) {
+                            console.log("Found quality match with " + newQuality);
+                            window.hls.currentLevel = levelIndex;
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
